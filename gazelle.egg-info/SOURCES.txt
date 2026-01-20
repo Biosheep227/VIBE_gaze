@@ -1,0 +1,7 @@
+LICENSE
+README.md
+setup.py
+gazelle.egg-info/PKG-INFO
+gazelle.egg-info/SOURCES.txt
+gazelle.egg-info/dependency_links.txt
+gazelle.egg-info/top_level.txt

@@ -1,0 +1,9 @@
+Metadata-Version: 2.4
+Name: gazelle
+Version: 0.0.1
+Summary: Gaze-LLE: Gaze Target Estimation via Large-Scale Learned Encoders
+Author: Fiona Ryan
+License-File: LICENSE
+Dynamic: author
+Dynamic: license-file
+Dynamic: summary
