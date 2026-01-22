@@ -49,64 +49,81 @@ class Pipeline:
 
     def step(self, frame: np.ndarray) -> GazeResultContainer:
 
-        # Creating containers
-        face_imgs = []
-        bboxes = []
-        landmarks = []
-        scores = []
+            # Creating containers
+            face_imgs = []
+            bboxes = []
+            landmarks = []
+            scores = []
 
-        if self.include_detector:
-            faces = self.detector(frame)
+            if self.include_detector:
+                faces = self.detector(frame)
 
-            if faces is not None: 
-                for box, landmark, score in faces:
-
-                    # Apply threshold
-                    if score < self.confidence_threshold:
-                        continue
-
-                    # Extract safe min and max of x,y
-                    x_min=int(box[0])
-                    if x_min < 0:
-                        x_min = 0
-                    y_min=int(box[1])
-                    if y_min < 0:
-                        y_min = 0
-                    x_max=int(box[2])
-                    y_max=int(box[3])
+                if faces is not None: 
                     
-                    # Crop image
-                    img = frame[y_min:y_max, x_min:x_max]
-                    img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
-                    img = cv2.resize(img, (224, 224))
-                    face_imgs.append(img)
+                    # --- 新增逻辑开始 ---
+                    
+                    # 1. 先把所有符合置信度的人脸存到一个临时列表中
+                    valid_faces = []
+                    for box, landmark, score in faces:
+                        if score >= self.confidence_threshold:
+                            valid_faces.append((box, landmark, score))
+                    
+                    # 2. 根据人脸框面积从大到小排序 (Area = width * height)
+                    # box 格式通常是 [x_min, y_min, x_max, y_max]
+                    valid_faces.sort(key=lambda x: (x[0][2] - x[0][0]) * (x[0][3] - x[0][1]), reverse=True)
 
-                    # Save data
-                    bboxes.append(box)
-                    landmarks.append(landmark)
-                    scores.append(score)
+                    # 3. 只取前2个 (如果少于2个，Python切片会自动处理，不会报错)
+                    target_faces = valid_faces[:1]
 
-                # Predict gaze
-                pitch, yaw = self.predict_gaze(np.stack(face_imgs))
+                    # --- 新增逻辑结束，下面对筛选出的 target_faces 进行处理 ---
+
+                    for box, landmark, score in target_faces:
+
+                        # Extract safe min and max of x,y
+                        x_min=int(box[0])
+                        if x_min < 0:
+                            x_min = 0
+                        y_min=int(box[1])
+                        if y_min < 0:
+                            y_min = 0
+                        x_max=int(box[2])
+                        y_max=int(box[3])
+                        
+                        # Crop image
+                        img = frame[y_min:y_max, x_min:x_max]
+                        img = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
+                        img = cv2.resize(img, (224, 224))
+                        face_imgs.append(img)
+
+                        # Save data
+                        bboxes.append(box)
+                        landmarks.append(landmark)
+                        scores.append(score)
+
+                    # Predict gaze (只要检测到了人脸才预测)
+                    if len(face_imgs) > 0:
+                        pitch, yaw = self.predict_gaze(np.stack(face_imgs))
+                    else:
+                        pitch = np.empty((0,1))
+                        yaw = np.empty((0,1))
+
+                else:
+                    pitch = np.empty((0,1))
+                    yaw = np.empty((0,1))
 
             else:
+                pitch, yaw = self.predict_gaze(frame)
 
-                pitch = np.empty((0,1))
-                yaw = np.empty((0,1))
+            # Save data
+            results = GazeResultContainer(
+                pitch=pitch,
+                yaw=yaw,
+                bboxes=np.stack(bboxes) if len(bboxes) > 0 else np.empty((0,4)),
+                landmarks=np.stack(landmarks) if len(landmarks) > 0 else np.empty((0,5,2)), # 根据实际维度调整
+                scores=np.stack(scores) if len(scores) > 0 else np.empty((0,1))
+            )
 
-        else:
-            pitch, yaw = self.predict_gaze(frame)
-
-        # Save data
-        results = GazeResultContainer(
-            pitch=pitch,
-            yaw=yaw,
-            bboxes=np.stack(bboxes),
-            landmarks=np.stack(landmarks),
-            scores=np.stack(scores)
-        )
-
-        return results
+            return results
 
     def predict_gaze(self, frame: Union[np.ndarray, torch.Tensor]):
         
